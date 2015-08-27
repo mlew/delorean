@@ -165,7 +165,7 @@ def normalize(dt, tz):
     return dt
 
 
-class Delorean(object):
+class Delorean(datetime):
     """
     The class `Delorean <Delorean>` object. This method accepts naive
     datetime objects, with a string timezone.
@@ -175,56 +175,23 @@ class Delorean(object):
                           'month', 'year', 'monday', 'tuesday', 'wednesday',
                           'thursday', 'friday', 'saturday','sunday')
 
-    def __init__(self, datetime=None, timezone=None):
-        # maybe set timezone on the way in here. if here set it if not
-        # use UTC
-        is_datetime_instance(datetime)
-
-        if datetime:
-            if is_datetime_naive(datetime):
-                if timezone:
-                    if isinstance(timezone, tzoffset):
-                        utcoffset = timezone.utcoffset(None)
-                        total_seconds = (
-                            (utcoffset.microseconds + (utcoffset.seconds + utcoffset.days * 24 * 3600) * 10**6) / 10**6)
-                        self._tzinfo = pytz.FixedOffset(total_seconds / 60)
-                    elif isinstance(timezone, tzinfo):
-                        self._tzinfo = timezone
-                    else:
-                        self._tzinfo = pytz.timezone(timezone)
-                    self._dt = localize(datetime, self._tzinfo)
-                    self._tzinfo = self._dt.tzinfo
-                else:
-                    #TODO(mlew, 2015-08-09):
-                    # Should we really throw an error here, or should this 
-                    # default to UTC?)
-                    raise DeloreanInvalidTimezone('Provide a valid timezone')
+    def __new__(cls, year, month=None, day=None, hour=0, minute=0, second=0, microsecond=0, timezone=None):
+        if timezone:
+            if isinstance(timezone, tzoffset):
+                utcoffset = timezone.utcoffset(None)
+                total_seconds = (
+                    (utcoffset.microseconds + (utcoffset.seconds + utcoffset.days * 24 * 3600) * 10**6) / 10**6)
+                timezone = pytz.FixedOffset(total_seconds / 60)
+            elif isinstance(timezone, tzinfo):
+                timezone = timezone
             else:
-                self._tzinfo = datetime.tzinfo
-                self._dt = datetime
+                timezone = pytz.timezone(timezone)
         else:
-            if timezone:
-                if isinstance(timezone, tzoffset):
-                    self._tzinfo = pytz.FixedOffset(timezone.utcoffset(None).total_seconds() / 60)
-                elif isinstance(timezone, tzinfo):
-                    self._tzinfo = timezone
-                else:
-                    self._tzinfo = pytz.timezone(timezone)
+            timezone = pytz.utc
 
-                self._dt = datetime_timezone(self._tzinfo)
-                self._tzinfo = self._dt.tzinfo
-            else:
-                self._tzinfo = pytz.utc
-                self._dt = datetime_timezone('UTC')
+        self = datetime.__new__(cls, year, month, day, hour, minute, second, microsecond, timezone)
 
-    def __repr__(self):
-        dt = self.datetime.replace(tzinfo=None)
-        if isinstance(self.timezone, pytz._FixedOffset):
-            tz = self.timezone
-        else:
-            tz = self.timezone.tzname(None)
-
-        return 'Delorean(datetime=%r, timezone=%r)' % (dt, tz)
+        return self
 
     def __eq__(self, other):
         if isinstance(other, Delorean):
@@ -310,8 +277,7 @@ class Delorean(object):
     @property
     def timezone(self):
         """
-        Returns a valid tzinfo object associated with
-        the Delorean object.
+        Returns human readable representation of the timezone.
 
         .. testsetup::
 
@@ -320,11 +286,28 @@ class Delorean(object):
 
         .. doctest::
 
-            >>> d = Delorean(datetime(2015, 1, 1), timezone='UTC')
+            >>> d = Delorean(2015, 1, 1, timezone='UTC')
             >>> d.timezone
             <UTC>
+
+        .. doctest::
+
+            >>> d = Delorean(2015, 1, 1, timezone='US/Pacific')
+            >>> d.timezone
+            'US/Pacific'
+
+        .. doctest::
+
+            >>> d = Delorean(2015, 1, 1, timezone=pytz.FixedOffset(-420))
+            >>> d.timezone
+            '-0700'
         """
-        return self._tzinfo
+        if isinstance(self.tzinfo, pytz._FixedOffset):
+            return self.strftime('%z')
+        elif hasattr(self.tzinfo, 'tzname'):
+            return self.tzinfo.tzname(None)
+        else:
+            return self.strftime('%z')
 
     def truncate(self, s):
         """
